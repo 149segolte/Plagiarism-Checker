@@ -1,7 +1,9 @@
 import tkinter
 import customtkinter
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import Normalizer
+from scipy import sparse
+import numpy as np
 
 vectorizer = TfidfVectorizer()
 
@@ -76,8 +78,39 @@ class App(customtkinter.CTk):
             self.meter.set(1)
         else:
             vectors = vectorizer.fit_transform([text1, text2])
-            similarity_matrix = cosine_similarity(vectors)
+            vec_norm = Normalizer().fit_transform(vectors)
+            similarity_matrix = sparse_dot(vec_norm, vec_norm.T)
+            print(similarity_matrix)
             self.meter.set(similarity_matrix[0][1])
+
+
+def sparse_dot(a, b):
+    if a.ndim > 2 or b.ndim > 2:
+        if sparse.issparse(a):
+            # sparse is always 2D. Implies b is 3D+
+            # [i, j] @ [k, ..., l, m, n] -> [i, k, ..., l, n]
+            b_ = np.rollaxis(b, -2)
+            b_2d = b_.reshape((b.shape[-2], -1))
+            ret = a @ b_2d
+            ret = ret.reshape(a.shape[0], *b_.shape[1:])
+        elif sparse.issparse(b):
+            # sparse is always 2D. Implies a is 3D+
+            # [k, ..., l, m] @ [i, j] -> [k, ..., l, j]
+            a_2d = a.reshape(-1, a.shape[-1])
+            ret = a_2d @ b
+            ret = ret.reshape(*a.shape[:-1], b.shape[1])
+        else:
+            ret = np.dot(a, b)
+    else:
+        ret = a @ b
+
+    if (
+        sparse.issparse(a)
+        and sparse.issparse(b)
+        and hasattr(ret, "toarray")
+    ):
+        return ret.toarray()
+    return ret
 
 
 app = App()
